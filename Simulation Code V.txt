@@ -1,0 +1,567 @@
+############################################################
+# SPACING STATISTIC
+############################################################
+
+spacing_statistic <- function(
+    x,
+    r,
+    weight_function
+) {
+  
+  # Sort observations
+  x <- sort(x)
+  
+  n <- length(x)
+  
+  # Check validity of r
+  if (r >= n) {
+    return(NA_real_)
+  }
+  
+  ##########################################################
+  # r-th order spacings
+  ##########################################################
+  
+  D_r <- x[(r + 1):n] - x[1:(n - r)]
+  
+  ##########################################################
+  # Midpoints associated with r-th spacings
+  ##########################################################
+  
+  midpoints <-
+    (x[(r + 1):n] + x[1:(n - r)]) / 2
+  
+  ##########################################################
+  # Evaluate weighting function
+  ##########################################################
+  
+  weights <-
+    weight_function(midpoints)
+  
+  ##########################################################
+  # Weighted spacing statistic
+  ##########################################################
+  
+  Dbar_r <- mean(D_r)
+  
+  numerator <-
+    sum(
+      weights *
+        (D_r - Dbar_r)^2
+    )
+  
+  denominator <-
+    sum(
+      (D_r - Dbar_r)^2
+    )
+  
+  ##########################################################
+  # Avoid division by zero
+  ##########################################################
+  
+  if (
+    denominator == 0 ||
+    !is.finite(denominator)
+  ) {
+    return(NA_real_)
+  }
+  
+  statistic <-
+    numerator / denominator
+  
+  return(statistic)
+}
+
+############################################################
+# WEIGHTING FUNCTIONS
+############################################################
+
+weight_uniform <- function(x) {
+  rep(1, length(x))
+}
+
+
+weight_central <- function(x) {
+  1 - (2 * x - 1)^2
+}
+
+
+weight_tail <- function(x) {
+  (2 * x - 1)^2
+}
+
+############################################################
+# SIMULATION V: ABRUPT LOCAL ALTERNATIVES
+############################################################
+
+
+############################################################
+# SETTINGS
+############################################################
+
+sample_sizes <- c(
+  50,
+  100,
+  200,
+  500,
+  1000
+)
+
+x0_values <- c(
+  0.25,
+  0.50,
+  0.75
+)
+
+delta_values <- c(
+  0.05,
+  0.10,
+  0.20,
+  0.40
+)
+
+r_values <- c(
+  1,
+  2,
+  3,
+  5,
+  8
+)
+
+N <- 5000
+
+alpha <- 0.05
+
+
+############################################################
+# CRITICAL VALUES
+############################################################
+
+critical_values <- numeric()
+
+
+############################################################
+# NULL CRITICAL VALUES
+#
+# Null distribution: U(0,1)
+############################################################
+
+for (n in sample_sizes) {
+  
+  for (r in r_values) {
+    
+    if (r >= n) {
+      next
+    }
+    
+    
+    ########################################################
+    # UNIFORM WEIGHTING
+    ########################################################
+    
+    null_uniform <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_uniform[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_uniform
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Uniform",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_uniform,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # CENTRAL WEIGHTING
+    ########################################################
+    
+    null_central <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_central[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_central
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Central",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_central,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # TAIL WEIGHTING
+    ########################################################
+    
+    null_tail <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_tail[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_tail
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Tail",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_tail,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # PROGRESS MESSAGE
+    ########################################################
+    
+    cat(
+      "Critical values completed:",
+      "n =", n,
+      "| r =", r,
+      "\n"
+    )
+  }
+}
+
+
+############################################################
+# FUNCTION TO GENERATE ABRUPT LOCAL ALTERNATIVE
+############################################################
+
+generate_abrupt_sample <- function(
+  n,
+  x0,
+  delta
+) {
+  
+  
+  ##########################################################
+  # FIRST DENSITY LEVEL
+  ##########################################################
+  
+  c1 <- 1 + delta
+  
+  
+  ##########################################################
+  # SECOND DENSITY LEVEL
+  #
+  # c1*x0 + c2*(1-x0) = 1
+  ##########################################################
+  
+  c2 <- (
+    1 -
+      c1 * x0
+  ) / (
+    1 - x0
+  )
+  
+  
+  ##########################################################
+  # PROBABILITY MASS IN FIRST INTERVAL
+  ##########################################################
+  
+  p1 <- c1 * x0
+  
+  
+  ##########################################################
+  # GENERATE SAMPLE
+  ##########################################################
+  
+  x <- numeric(n)
+  
+  
+  for (i in 1:n) {
+    
+    u <- runif(1)
+    
+    if (u <= p1) {
+      
+      ######################################################
+      # SAMPLE FROM (0, x0]
+      ######################################################
+      
+      x[i] <-
+        runif(
+          1,
+          min = 0,
+          max = x0
+        )
+      
+    } else {
+      
+      ######################################################
+      # SAMPLE FROM (x0, 1)
+      ######################################################
+      
+      x[i] <-
+        runif(
+          1,
+          min = x0,
+          max = 1
+        )
+    }
+  }
+  
+  
+  return(x)
+}
+
+
+############################################################
+# RESULTS OBJECT
+############################################################
+
+results_sim5 <- data.frame(
+  n = numeric(0),
+  x0 = numeric(0),
+  delta = numeric(0),
+  r = numeric(0),
+  Weight = character(0),
+  Power = numeric(0),
+  MCSE = numeric(0),
+  stringsAsFactors = FALSE
+)
+
+
+############################################################
+# SIMULATION V
+############################################################
+
+for (n in sample_sizes) {
+  
+  for (x0 in x0_values) {
+    
+    for (delta in delta_values) {
+      
+      for (r in r_values) {
+        
+        if (r >= n) {
+          next
+        }
+        
+        
+        ####################################################
+        # THREE WEIGHTING SCHEMES
+        ####################################################
+        
+        for (
+          weight_name in
+          c(
+            "Uniform",
+            "Central",
+            "Tail"
+          )
+        ) {
+          
+          
+          ##################################################
+          # SELECT WEIGHT FUNCTION
+          ##################################################
+          
+          if (
+            weight_name == "Uniform"
+          ) {
+            
+            weight_function <-
+              weight_uniform
+            
+          } else if (
+            weight_name == "Central"
+          ) {
+            
+            weight_function <-
+              weight_central
+            
+          } else {
+            
+            weight_function <-
+              weight_tail
+          }
+          
+          
+          ##################################################
+          # GET CRITICAL VALUE
+          ##################################################
+          
+          critical_key <- paste(
+            n,
+            r,
+            weight_name,
+            sep = "_"
+          )
+          
+          crit <- critical_values[critical_key]
+          
+          
+          ##################################################
+          # MONTE CARLO REPLICATIONS
+          ##################################################
+          
+          rejection <- logical(N)
+          
+          
+          for (b in 1:N) {
+            
+            
+            ################################################
+            # GENERATE ABRUPT ALTERNATIVE SAMPLE
+            ################################################
+            
+            x <- generate_abrupt_sample(
+              n = n,
+              x0 = x0,
+              delta = delta
+            )
+            
+            
+            ################################################
+            # CALCULATE TEST STATISTIC
+            ################################################
+            
+            statistic <-
+              spacing_statistic(
+                x = x,
+                r = r,
+                weight_function = weight_function
+              )
+            
+            
+            ################################################
+            # TEST DECISION
+            ################################################
+            
+            rejection[b] <-
+              statistic > crit
+          }
+          
+          
+          ##################################################
+          # EMPIRICAL POWER
+          ##################################################
+          
+          power <- mean(
+            rejection
+          )
+          
+          
+          ##################################################
+          # MONTE CARLO STANDARD ERROR
+          ##################################################
+          
+          mcse <- sqrt(
+            power *
+              (1 - power) /
+              N
+          )
+          
+          
+          ##################################################
+          # STORE RESULT
+          ##################################################
+          
+          results_sim5 <-
+            rbind(
+              results_sim5,
+              data.frame(
+                n = n,
+                x0 = x0,
+                delta = delta,
+                r = r,
+                Weight = weight_name,
+                Power = power,
+                MCSE = mcse,
+                stringsAsFactors = FALSE
+              )
+            )
+          
+          
+          ##################################################
+          # PROGRESS MESSAGE
+          ##################################################
+          
+          cat(
+            "Completed:",
+            "n =", n,
+            "| x0 =", x0,
+            "| delta =", delta,
+            "| r =", r,
+            "| Weight =", weight_name,
+            "\n"
+          )
+        }
+      }
+    }
+  }
+}
+
+
+############################################################
+# VIEW RESULTS
+############################################################
+
+print(results_sim5)
+
+
+############################################################
+# SAVE RESULTS TO CSV
+############################################################
+
+write.csv(
+  results_sim5,
+  "Simulation_V_results.csv",
+  row.names = FALSE
+)
+
+
+############################################################
+# OPTIONAL: SAVE AS RDS
+############################################################
+
+saveRDS(
+  results_sim5,
+  "Simulation_V_results.rds"
+)

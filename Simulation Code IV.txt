@@ -1,0 +1,552 @@
+Simulation Code IV
+
+############################################################
+# SPACING STATISTIC
+############################################################
+
+spacing_statistic <- function(
+    x,
+    r,
+    weight_function
+) {
+  
+  # Sort observations
+  x <- sort(x)
+  
+  n <- length(x)
+  
+  # Check validity of r
+  if (r >= n) {
+    return(NA_real_)
+  }
+  
+  ##########################################################
+  # r-th order spacings
+  ##########################################################
+  
+  D_r <- x[(r + 1):n] - x[1:(n - r)]
+  
+  ##########################################################
+  # Midpoints associated with r-th spacings
+  ##########################################################
+  
+  midpoints <-
+    (x[(r + 1):n] + x[1:(n - r)]) / 2
+  
+  ##########################################################
+  # Evaluate weighting function
+  ##########################################################
+  
+  weights <-
+    weight_function(midpoints)
+  
+  ##########################################################
+  # Weighted spacing statistic
+  ##########################################################
+  
+  Dbar_r <- mean(D_r)
+  
+  numerator <-
+    sum(
+      weights *
+        (D_r - Dbar_r)^2
+    )
+  
+  denominator <-
+    sum(
+      (D_r - Dbar_r)^2
+    )
+  
+  ##########################################################
+  # Avoid division by zero
+  ##########################################################
+  
+  if (
+    denominator == 0 ||
+    !is.finite(denominator)
+  ) {
+    return(NA_real_)
+  }
+  
+  statistic <-
+    numerator / denominator
+  
+  return(statistic)
+}
+
+############################################################
+# WEIGHTING FUNCTIONS
+############################################################
+
+weight_uniform <- function(x) {
+  rep(1, length(x))
+}
+
+
+weight_central <- function(x) {
+  1 - (2 * x - 1)^2
+}
+
+
+weight_tail <- function(x) {
+  (2 * x - 1)^2
+}
+
+############################################################
+# OSCILLATORY ALTERNATIVE SAMPLE GENERATOR
+############################################################
+
+generate_oscillatory_sample <- function(
+    n,
+    c,
+    k
+) {
+  
+  ##########################################################
+  # BASE DENSITY
+  ##########################################################
+  
+  f0 <- function(x) {
+    rep(1, length(x))
+  }
+  
+  
+  ##########################################################
+  # OSCILLATORY PERTURBATION
+  ##########################################################
+  
+  h <- function(x) {
+    sin(2 * pi * k * x)
+  }
+  
+  
+  ##########################################################
+  # PROPOSAL DENSITY
+  ##########################################################
+  
+  density_function <- function(x) {
+    
+    f0(x) *
+      (
+        1 +
+          c / sqrt(n) *
+          h(x)
+      )
+  }
+  
+  
+  ##########################################################
+  # REJECTION SAMPLING
+  ##########################################################
+  
+  x <- numeric(n)
+  
+  count <- 0
+  
+  M <- 1 + abs(c) / sqrt(n)
+  
+  
+  while (count < n) {
+    
+    y <- runif(1)
+    
+    u <- runif(1)
+    
+    accept_probability <-
+      density_function(y) / M
+    
+    if (u <= accept_probability) {
+      
+      count <- count + 1
+      
+      x[count] <- y
+    }
+  }
+  
+  
+  return(x)
+}
+############################################################
+# SIMULATION IV: OSCILLATORY ALTERNATIVES
+############################################################
+
+############################################################
+# SETTINGS
+############################################################
+
+sample_sizes <- c(
+  50,
+  100,
+  200,
+  500,
+  1000
+)
+
+r_values <- c(
+  1,
+  2,
+  3,
+  5,
+  8
+)
+
+k_values <- c(
+  1,
+  2,
+  4,
+  8
+)
+
+c_values <- c(
+  0.5,
+  1,
+  1.5,
+  2
+)
+
+N <- 5000
+
+alpha <- 0.05
+
+
+############################################################
+# CRITICAL VALUES
+#
+# Critical values are obtained under U(0,1)
+# separately for each n, r and weighting scheme.
+############################################################
+
+critical_values <- numeric()
+
+
+############################################################
+# CALCULATE NULL CRITICAL VALUES
+############################################################
+
+for (n in sample_sizes) {
+  
+  for (r in r_values) {
+    
+    if (r >= n) {
+      next
+    }
+    
+    
+    ########################################################
+    # UNIFORM WEIGHTING
+    ########################################################
+    
+    null_uniform <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_uniform[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_uniform
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Uniform",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_uniform,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # CENTRAL WEIGHTING
+    ########################################################
+    
+    null_central <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_central[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_central
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Central",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_central,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # TAIL WEIGHTING
+    ########################################################
+    
+    null_tail <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_tail[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_tail
+        )
+    }
+    
+    critical_key <- paste(
+      n,
+      r,
+      "Tail",
+      sep = "_"
+    )
+    
+    critical_values[critical_key] <-
+      quantile(
+        null_tail,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # PROGRESS MESSAGE
+    ########################################################
+    
+    cat(
+      "Critical values completed:",
+      "n =", n,
+      "| r =", r,
+      "\n"
+    )
+  }
+}
+
+
+############################################################
+# RESULTS OBJECT
+############################################################
+
+results_sim4 <- data.frame(
+  n = numeric(0),
+  k = numeric(0),
+  c = numeric(0),
+  r = numeric(0),
+  Weight = character(0),
+  Power = numeric(0),
+  MCSE = numeric(0),
+  stringsAsFactors = FALSE
+)
+
+
+############################################################
+# SIMULATION IV
+# OSCILLATORY ALTERNATIVES
+############################################################
+
+for (n in sample_sizes) {
+  
+  for (k in k_values) {
+    
+    for (c in c_values) {
+      
+      for (r in r_values) {
+        
+        if (r >= n) {
+          next
+        }
+        
+        
+        ####################################################
+        # THREE WEIGHTING SCHEMES
+        ####################################################
+        
+        for (
+          weight_name in
+          c(
+            "Uniform",
+            "Central",
+            "Tail"
+          )
+        ) {
+          
+          
+          ##################################################
+          # SELECT WEIGHT FUNCTION
+          ##################################################
+          
+          if (
+            weight_name == "Uniform"
+          ) {
+            
+            weight_function <-
+              weight_uniform
+            
+          } else if (
+            weight_name == "Central"
+          ) {
+            
+            weight_function <-
+              weight_central
+            
+          } else {
+            
+            weight_function <-
+              weight_tail
+          }
+          
+          
+          ##################################################
+          # GET CRITICAL VALUE
+          ##################################################
+          
+          critical_key <- paste(
+            n,
+            r,
+            weight_name,
+            sep = "_"
+          )
+          
+          crit <- critical_values[critical_key]
+          
+          
+          ##################################################
+          # MONTE CARLO REPLICATIONS
+          ##################################################
+          
+          rejection <- logical(N)
+          
+          
+          for (b in 1:N) {
+            
+            
+            ################################################
+            # GENERATE OSCILLATORY ALTERNATIVE SAMPLE
+            ################################################
+            
+            x <- generate_oscillatory_sample(
+              n = n,
+              c = c,
+              k = k
+            )
+            
+            
+            ################################################
+            # CALCULATE TEST STATISTIC
+            ################################################
+            
+            statistic <-
+              spacing_statistic(
+                x = x,
+                r = r,
+                weight_function = weight_function
+              )
+            
+            
+            ################################################
+            # TEST DECISION
+            ################################################
+            
+            rejection[b] <-
+              statistic > crit
+          }
+          
+          
+          ##################################################
+          # EMPIRICAL POWER
+          ##################################################
+          
+          power <- mean(
+            rejection
+          )
+          
+          
+          ##################################################
+          # MONTE CARLO STANDARD ERROR
+          ##################################################
+          
+          mcse <- sqrt(
+            power *
+              (1 - power) /
+              N
+          )
+          
+          
+          ##################################################
+          # STORE RESULT
+          ##################################################
+          
+          results_sim4 <-
+            rbind(
+              results_sim4,
+              data.frame(
+                n = n,
+                k = k,
+                c = c,
+                r = r,
+                Weight = weight_name,
+                Power = power,
+                MCSE = mcse,
+                stringsAsFactors = FALSE
+              )
+            )
+          
+          
+          ##################################################
+          # PROGRESS MESSAGE
+          ##################################################
+          
+          cat(
+            "Completed:",
+            "n =", n,
+            "| k =", k,
+            "| c =", c,
+            "| r =", r,
+            "| Weight =", weight_name,
+            "\n"
+          )
+        }
+      }
+    }
+  }
+}
+
+
+############################################################
+# VIEW RESULTS
+############################################################
+
+print(results_sim4)
+
+
+############################################################
+# SAVE RESULTS
+############################################################
+
+write.csv(
+  results_sim4,
+  "Simulation_IV_results.csv",
+  row.names = FALSE
+)

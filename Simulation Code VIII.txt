@@ -1,0 +1,1336 @@
+############################################################
+# SIMULATION VIII
+# EFFECT OF HIGHER-ORDER SPACING
+############################################################
+
+############################################################
+# CLEAR OLD SIMULATION VIII OBJECTS
+############################################################
+
+rm(
+  list = intersect(
+    c(
+      "results_sim8",
+      "critical_values"
+    ),
+    ls()
+  )
+)
+
+
+############################################################
+# PARAMETERS
+############################################################
+
+sample_sizes <- c(
+  50,
+  100,
+  200,
+  500,
+  1000
+)
+
+r_values <- c(
+  1,
+  2,
+  3,
+  5,
+  8,
+  10,
+  15
+)
+
+N <- 500
+
+alpha <- 0.05
+
+
+############################################################
+# LOCALIZED ALTERNATIVE PARAMETERS
+############################################################
+
+x0_values <- c(
+  0.25,
+  0.50,
+  0.75
+)
+
+eta_values <- c(
+  0.05,
+  0.10,
+  0.20
+)
+
+c_values <- c(
+  0.5,
+  1,
+  1.5,
+  2
+)
+
+
+############################################################
+# WEIGHTING FUNCTIONS
+############################################################
+
+weight_uniform <- function(x) {
+  
+  rep(
+    1,
+    length(x)
+  )
+}
+
+
+weight_central <- function(x) {
+  
+  1 -
+    (2 * x - 1)^2
+}
+
+
+weight_tail <- function(x) {
+  
+  (2 * x - 1)^2
+}
+
+
+############################################################
+# LOCALIZED WEIGHT
+############################################################
+
+weight_localized <- function(
+    x,
+    x0,
+    eta
+) {
+  
+  exp(
+    -(
+      (x - x0)^2
+    ) /
+      (
+        2 * eta^2
+      )
+  )
+}
+
+
+############################################################
+# CENTERING CONSTANTS
+############################################################
+
+centering_constants <- list()
+
+
+for (
+  x0 in x0_values
+) {
+  
+  for (
+    eta in eta_values
+  ) {
+    
+    grid <- seq(
+      0,
+      1,
+      length.out = 10001
+    )
+    
+    h_values <- exp(
+      -(
+        (grid - x0)^2
+      ) /
+        (
+          2 * eta^2
+        )
+    )
+    
+    key <- paste(
+      x0,
+      eta,
+      sep = "_"
+    )
+    
+    centering_constants[[key]] <-
+      mean(h_values)
+  }
+}
+
+
+############################################################
+# GENERATE LOCALIZED SAMPLE
+############################################################
+
+generate_localized_sample <- function(
+    n,
+    c,
+    x0,
+    eta,
+    centering_constants = NULL
+) {
+  
+  ##########################################################
+  # KEY
+  ##########################################################
+  
+  key <- paste(
+    x0,
+    eta,
+    sep = "_"
+  )
+  
+  
+  ##########################################################
+  # CENTERING CONSTANT
+  ##########################################################
+  
+  if (
+    !is.null(centering_constants) &&
+    key %in% names(centering_constants)
+  ) {
+    
+    center <-
+      as.numeric(
+        centering_constants[[key]]
+      )
+    
+  } else {
+    
+    grid <- seq(
+      0,
+      1,
+      length.out = 10001
+    )
+    
+    h_values <- exp(
+      -(
+        (grid - x0)^2
+      ) /
+        (
+          2 * eta^2
+        )
+    )
+    
+    center <-
+      mean(h_values)
+  }
+  
+  
+  ##########################################################
+  # CENTERED LOCALIZED PERTURBATION
+  ##########################################################
+  
+  h_centered <- function(x) {
+    
+    exp(
+      -(
+        (x - x0)^2
+      ) /
+        (
+          2 * eta^2
+        )
+    ) -
+      center
+  }
+  
+  
+  ##########################################################
+  # ALTERNATIVE DENSITY
+  ##########################################################
+  
+  density_function <- function(x) {
+    
+    1 +
+      (c / sqrt(n)) *
+      h_centered(x)
+  }
+  
+  
+  ##########################################################
+  # CHECK POSITIVITY
+  ##########################################################
+  
+  grid_check <- seq(
+    0,
+    1,
+    length.out = 10001
+  )
+  
+  density_values <-
+    density_function(
+      grid_check
+    )
+  
+  if (
+    any(
+      !is.finite(density_values)
+    )
+  ) {
+    
+    stop(
+      "Non-finite density encountered."
+    )
+  }
+  
+  if (
+    min(density_values) <= 0
+  ) {
+    
+    stop(
+      paste(
+        "Non-positive density:",
+        "n =", n,
+        "c =", c,
+        "x0 =", x0,
+        "eta =", eta
+      )
+    )
+  }
+  
+  
+  ##########################################################
+  # REJECTION SAMPLING
+  ##########################################################
+  
+  maximum_density <-
+    max(density_values)
+  
+  sample_x <- numeric(n)
+  
+  number_generated <- 0
+  
+  
+  while (
+    number_generated < n
+  ) {
+    
+    remaining <-
+      n -
+      number_generated
+    
+    candidate <- runif(
+      max(
+        2 * remaining,
+        10
+      )
+    )
+    
+    candidate_density <-
+      density_function(
+        candidate
+      )
+    
+    acceptance_probability <-
+      candidate_density /
+      maximum_density
+    
+    accepted <-
+      candidate[
+        runif(
+          length(candidate)
+        ) <=
+          acceptance_probability
+      ]
+    
+    if (
+      length(accepted) > 0
+    ) {
+      
+      number_to_store <-
+        min(
+          length(accepted),
+          remaining
+        )
+      
+      index_start <-
+        number_generated + 1
+      
+      index_end <-
+        number_generated +
+        number_to_store
+      
+      sample_x[
+        index_start:index_end
+      ] <-
+        accepted[
+          seq_len(
+            number_to_store
+          )
+        ]
+      
+      number_generated <-
+        number_generated +
+        number_to_store
+    }
+  }
+  
+  
+  return(
+    sample_x
+  )
+}
+
+
+############################################################
+# SPACING STATISTIC
+############################################################
+
+spacing_statistic <- function(
+    x,
+    r,
+    weight_function
+) {
+  
+  x <- sort(x)
+  
+  n <- length(x)
+  
+  
+  ##########################################################
+  # VALIDITY CHECK
+  ##########################################################
+  
+  if (
+    r >= n
+  ) {
+    
+    return(
+      NA_real_
+    )
+  }
+  
+  
+  ##########################################################
+  # R-TH ORDER SPACINGS
+  ##########################################################
+  
+  D_r <-
+    x[
+      (r + 1):n
+    ] -
+    x[
+      1:(n - r)
+    ]
+  
+  
+  ##########################################################
+  # MIDPOINTS
+  ##########################################################
+  
+  midpoints <-
+    (
+      x[
+        (r + 1):n
+      ] +
+      x[
+        1:(n - r)
+      ]
+    ) / 2
+  
+  
+  ##########################################################
+  # WEIGHTS
+  ##########################################################
+  
+  weights <-
+    weight_function(
+      midpoints
+    )
+  
+  
+  ##########################################################
+  # CHECK WEIGHTS
+  ##########################################################
+  
+  if (
+    length(weights) !=
+    length(D_r)
+  ) {
+    
+    stop(
+      "Weight function returned incorrect length."
+    )
+  }
+  
+  
+  ##########################################################
+  # CENTER SPACINGS
+  ##########################################################
+  
+  Dbar_r <-
+    mean(D_r)
+  
+  
+  ##########################################################
+  # NUMERATOR
+  ##########################################################
+  
+  numerator <-
+    sum(
+      weights *
+        (
+          D_r -
+            Dbar_r
+        )^2
+    )
+  
+  
+  ##########################################################
+  # DENOMINATOR
+  ##########################################################
+  
+  denominator <-
+    sum(
+      (
+        D_r -
+          Dbar_r
+      )^2
+    )
+  
+  
+  ##########################################################
+  # CHECK DENOMINATOR
+  ##########################################################
+  
+  if (
+    !is.finite(denominator) ||
+    denominator <= 0
+  ) {
+    
+    return(
+      NA_real_
+    )
+  }
+  
+  
+  ##########################################################
+  # STATISTIC
+  ##########################################################
+  
+  statistic <-
+    numerator /
+    denominator
+  
+  
+  return(
+    statistic
+  )
+}
+
+
+############################################################
+# CRITICAL VALUE CALIBRATION
+#
+# ONLY THREE GLOBAL WEIGHTS:
+# Uniform, Central, Tail
+############################################################
+
+critical_values <- numeric()
+
+
+for (
+  n in sample_sizes
+) {
+  
+  for (
+    r in r_values
+  ) {
+    
+    ########################################################
+    # ONLY r < n
+    ########################################################
+    
+    if (
+      r >= n
+    ) {
+      
+      next
+    }
+    
+    
+    ########################################################
+    # THREE GLOBAL WEIGHTS
+    ########################################################
+    
+    weight_list <- list(
+      Uniform = weight_uniform,
+      Central = weight_central,
+      Tail = weight_tail
+    )
+    
+    
+    ########################################################
+    # CALIBRATE EACH GLOBAL WEIGHT
+    ########################################################
+    
+    for (
+      weight_name in names(weight_list)
+    ) {
+      
+      null_values <-
+        numeric(N)
+      
+      
+      for (
+        b in seq_len(N)
+      ) {
+        
+        x_null <-
+          runif(n)
+        
+        null_values[b] <-
+          spacing_statistic(
+            x = x_null,
+            r = r,
+            weight_function =
+              weight_list[[weight_name]]
+          )
+      }
+      
+      
+      null_values <-
+        null_values[
+          is.finite(null_values)
+        ]
+      
+      
+      if (
+        length(null_values) == 0
+      ) {
+        
+        stop(
+          paste(
+            "No valid null statistics:",
+            "n =", n,
+            "r =", r,
+            "Weight =", weight_name
+          )
+        )
+      }
+      
+      
+      key <- paste(
+        n,
+        r,
+        weight_name,
+        sep = "_"
+      )
+      
+      
+      critical_values[key] <-
+        as.numeric(
+          quantile(
+            null_values,
+            probs = 1 - alpha,
+            na.rm = TRUE
+          )
+        )
+    }
+    
+    
+    ########################################################
+    # PROGRESS
+    ########################################################
+    
+    cat(
+      "Calibration completed:",
+      "n =", n,
+      "| r =", r,
+      "\n"
+    )
+  }
+}
+
+
+############################################################
+# POWER CALCULATION FUNCTION
+############################################################
+
+calculate_power <- function(
+    n,
+    r,
+    weight_function,
+    critical_value,
+    generator
+) {
+  
+  rejection <-
+    logical(N)
+  
+  
+  for (
+    b in seq_len(N)
+  ) {
+    
+    x <-
+      generator()
+    
+    
+    statistic <-
+      spacing_statistic(
+        x = x,
+        r = r,
+        weight_function =
+          weight_function
+      )
+    
+    
+    rejection[b] <-
+      is.finite(statistic) &&
+      statistic >
+      critical_value
+  }
+  
+  
+  power <-
+    mean(rejection)
+  
+  
+  mcse <-
+    sqrt(
+      power *
+        (1 - power) /
+        N
+    )
+  
+  
+  return(
+    c(
+      Power = power,
+      MCSE = mcse
+    )
+  )
+}
+
+
+############################################################
+# RESULT STORAGE
+############################################################
+
+results_sim8 <- data.frame(
+  
+  n = integer(),
+  
+  Alternative = character(),
+  
+  Parameter1 = numeric(),
+  
+  Parameter2 = numeric(),
+  
+  Parameter3 = numeric(),
+  
+  r = integer(),
+  
+  Weight = character(),
+  
+  Power = numeric(),
+  
+  MCSE = numeric(),
+  
+  stringsAsFactors = FALSE
+)
+
+
+############################################################
+# GLOBAL WEIGHT LIST
+############################################################
+
+weight_list <- list(
+  
+  Uniform = weight_uniform,
+  
+  Central = weight_central,
+  
+  Tail = weight_tail
+)
+
+
+############################################################
+# MAIN SIMULATION
+############################################################
+
+for (
+  n in sample_sizes
+) {
+  
+  for (
+    r in r_values
+  ) {
+    
+    ########################################################
+    # ADMISSIBILITY CONDITION
+    ########################################################
+    
+    if (
+      r >= n
+    ) {
+      
+      next
+    }
+    
+    
+    ########################################################
+    # 1. LOCALIZED ALTERNATIVES
+    ########################################################
+    
+    for (
+      x0 in x0_values
+    ) {
+      
+      for (
+        eta in eta_values
+      ) {
+        
+        ####################################################
+        # MATCHED LOCALIZED WEIGHT
+        ####################################################
+        
+        localized_weight_function <-
+          local({
+            
+            x0_local <- x0
+            
+            eta_local <- eta
+            
+            function(x) {
+              
+              weight_localized(
+                x = x,
+                x0 = x0_local,
+                eta = eta_local
+              )
+            }
+          })
+        
+        
+        ####################################################
+        # CALIBRATE MATCHED LOCALIZED WEIGHT
+        ####################################################
+        
+        null_localized <-
+          numeric(N)
+        
+        
+        for (
+          b in seq_len(N)
+        ) {
+          
+          x_null <-
+            runif(n)
+          
+          null_localized[b] <-
+            spacing_statistic(
+              x = x_null,
+              r = r,
+              weight_function =
+                localized_weight_function
+            )
+        }
+        
+        
+        null_localized <-
+          null_localized[
+            is.finite(null_localized)
+          ]
+        
+        
+        localized_crit <-
+          as.numeric(
+            quantile(
+              null_localized,
+              probs = 1 - alpha,
+              na.rm = TRUE
+            )
+          )
+        
+        
+        ####################################################
+        # VALUES OF c
+        ####################################################
+        
+        for (
+          c in c_values
+        ) {
+          
+          
+          ##################################################
+          # THREE GLOBAL WEIGHTS
+          ##################################################
+          
+          for (
+            weight_name in names(weight_list)
+          ) {
+            
+            key <- paste(
+              n,
+              r,
+              weight_name,
+              sep = "_"
+            )
+            
+            crit <-
+              critical_values[key]
+            
+            
+            ans <-
+              calculate_power(
+                n = n,
+                r = r,
+                weight_function =
+                  weight_list[[weight_name]],
+                critical_value =
+                  crit,
+                generator =
+                  function() {
+                    
+                    generate_localized_sample(
+                      n = n,
+                      c = c,
+                      x0 = x0,
+                      eta = eta,
+                      centering_constants =
+                        centering_constants
+                    )
+                  }
+              )
+            
+            
+            results_sim8[
+              nrow(results_sim8) + 1,
+            ] <-
+              data.frame(
+                
+                n = n,
+                
+                Alternative =
+                  "Localized",
+                
+                Parameter1 =
+                  x0,
+                
+                Parameter2 =
+                  eta,
+                
+                Parameter3 =
+                  c,
+                
+                r = r,
+                
+                Weight =
+                  weight_name,
+                
+                Power =
+                  as.numeric(
+                    ans["Power"]
+                  ),
+                
+                MCSE =
+                  as.numeric(
+                    ans["MCSE"]
+                  )
+              )
+          }
+          
+          
+          ##################################################
+          # MATCHED LOCALIZED WEIGHT
+          ##################################################
+          
+          ans <-
+            calculate_power(
+              n = n,
+              r = r,
+              weight_function =
+                localized_weight_function,
+              critical_value =
+                localized_crit,
+              generator =
+                function() {
+                  
+                  generate_localized_sample(
+                    n = n,
+                    c = c,
+                    x0 = x0,
+                    eta = eta,
+                    centering_constants =
+                      centering_constants
+                  )
+                }
+            )
+          
+          
+          results_sim8[
+            nrow(results_sim8) + 1,
+          ] <-
+            data.frame(
+              
+              n = n,
+              
+              Alternative =
+                "Localized",
+              
+              Parameter1 =
+                x0,
+              
+              Parameter2 =
+                eta,
+              
+              Parameter3 =
+                c,
+              
+              r = r,
+              
+              Weight =
+                "Localized",
+              
+              Power =
+                as.numeric(
+                  ans["Power"]
+                ),
+              
+              MCSE =
+                as.numeric(
+                  ans["MCSE"]
+                )
+            )
+        }
+      }
+    }
+    
+    
+    ########################################################
+    # 2. OSCILLATORY ALTERNATIVES
+    ########################################################
+    
+    for (
+      k in k_values
+    ) {
+      
+      for (
+        c in c_values
+      ) {
+        
+        for (
+          weight_name in names(weight_list)
+        ) {
+          
+          key <- paste(
+            n,
+            r,
+            weight_name,
+            sep = "_"
+          )
+          
+          crit <-
+            critical_values[key]
+          
+          
+          ans <-
+            calculate_power(
+              n = n,
+              r = r,
+              weight_function =
+                weight_list[[weight_name]],
+              critical_value =
+                crit,
+              generator =
+                function() {
+                  
+                  generate_oscillatory_sample(
+                    n = n,
+                    c = c,
+                    k = k
+                  )
+                }
+            )
+          
+          
+          results_sim8[
+            nrow(results_sim8) + 1,
+          ] <-
+            data.frame(
+              
+              n = n,
+              
+              Alternative =
+                "Oscillatory",
+              
+              Parameter1 =
+                k,
+              
+              Parameter2 =
+                c,
+              
+              Parameter3 =
+                NA_real_,
+              
+              r = r,
+              
+              Weight =
+                weight_name,
+              
+              Power =
+                as.numeric(
+                  ans["Power"]
+                ),
+              
+              MCSE =
+                as.numeric(
+                  ans["MCSE"]
+                )
+            )
+        }
+      }
+    }
+    
+    
+    ########################################################
+    # 3. ABRUPT LOCAL ALTERNATIVES
+    ########################################################
+    
+    for (
+      x0 in abrupt_x0_values
+    ) {
+      
+      for (
+        delta in delta_values
+      ) {
+        
+        for (
+          weight_name in names(weight_list)
+        ) {
+          
+          key <- paste(
+            n,
+            r,
+            weight_name,
+            sep = "_"
+          )
+          
+          crit <-
+            critical_values[key]
+          
+          
+          ans <-
+            calculate_power(
+              n = n,
+              r = r,
+              weight_function =
+                weight_list[[weight_name]],
+              critical_value =
+                crit,
+              generator =
+                function() {
+                  
+                  generate_abrupt_sample(
+                    n = n,
+                    x0 = x0,
+                    delta = delta
+                  )
+                }
+            )
+          
+          
+          results_sim8[
+            nrow(results_sim8) + 1,
+          ] <-
+            data.frame(
+              
+              n = n,
+              
+              Alternative =
+                "Abrupt",
+              
+              Parameter1 =
+                x0,
+              
+              Parameter2 =
+                delta,
+              
+              Parameter3 =
+                NA_real_,
+              
+              r = r,
+              
+              Weight =
+                weight_name,
+              
+              Power =
+                as.numeric(
+                  ans["Power"]
+                ),
+              
+              MCSE =
+                as.numeric(
+                  ans["MCSE"]
+                )
+            )
+        }
+      }
+    }
+    
+    
+    ########################################################
+    # 4. MIXTURE ALTERNATIVES
+    ########################################################
+    
+    for (
+      pi in pi_values
+    ) {
+      
+      for (
+        mu in mu_values
+      ) {
+        
+        for (
+          weight_name in names(weight_list)
+        ) {
+          
+          key <- paste(
+            n,
+            r,
+            weight_name,
+            sep = "_"
+          )
+          
+          crit <-
+            critical_values[key]
+          
+          
+          ans <-
+            calculate_power(
+              n = n,
+              r = r,
+              weight_function =
+                weight_list[[weight_name]],
+              critical_value =
+                crit,
+              generator =
+                function() {
+                  
+                  generate_mixture_sample(
+                    n = n,
+                    pi = pi,
+                    mu = mu
+                  )
+                }
+            )
+          
+          
+          results_sim8[
+            nrow(results_sim8) + 1,
+          ] <-
+            data.frame(
+              
+              n = n,
+              
+              Alternative =
+                "Mixture",
+              
+              Parameter1 =
+                pi,
+              
+              Parameter2 =
+                mu,
+              
+              Parameter3 =
+                NA_real_,
+              
+              r = r,
+              
+              Weight =
+                weight_name,
+              
+              Power =
+                as.numeric(
+                  ans["Power"]
+                ),
+              
+              MCSE =
+                as.numeric(
+                  ans["MCSE"]
+                )
+            )
+        }
+      }
+    }
+    
+    
+    ########################################################
+    # PROGRESS
+    ########################################################
+    
+    cat(
+      "Simulation VIII completed:",
+      "n =", n,
+      "| r =", r,
+      "\n"
+    )
+  }
+}
+
+
+############################################################
+# CONVERT RESULT COLUMNS
+############################################################
+
+results_sim8$n <-
+  as.integer(
+    results_sim8$n
+  )
+
+results_sim8$Parameter1 <-
+  as.numeric(
+    results_sim8$Parameter1
+  )
+
+results_sim8$Parameter2 <-
+  as.numeric(
+    results_sim8$Parameter2
+  )
+
+results_sim8$Parameter3 <-
+  as.numeric(
+    results_sim8$Parameter3
+  )
+
+results_sim8$r <-
+  as.integer(
+    results_sim8$r
+  )
+
+results_sim8$Power <-
+  as.numeric(
+    results_sim8$Power
+  )
+
+results_sim8$MCSE <-
+  as.numeric(
+    results_sim8$MCSE
+  )
+
+
+############################################################
+# SAVE RESULTS
+############################################################
+
+write.csv(
+  results_sim8,
+  "Simulation_VIII_Effect_of_Higher_Order_Spacing.csv",
+  row.names = FALSE
+)
+
+
+############################################################
+# DISPLAY RESULTS
+############################################################
+
+print(
+  results_sim8
+)
+
+
+############################################################
+# END
+############################################################

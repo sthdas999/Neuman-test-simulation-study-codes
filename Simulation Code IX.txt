@@ -1,0 +1,1358 @@
+############################################################
+# SIMULATION IX
+# CONTIGUOUS ALTERNATIVE EXPERIMENT
+############################################################
+
+rm(list = ls())
+
+############################################################
+# PARAMETERS
+############################################################
+
+N <- 5000
+
+alpha <- 0.05
+
+sample_sizes <- c(
+  50,
+  100,
+  200,
+  500,
+  1000
+)
+
+r_values <- c(
+  1,
+  2,
+  3,
+  5,
+  8
+)
+
+c_values <- c(
+  0.5,
+  1,
+  1.5,
+  2
+)
+
+############################################################
+# RANDOM SEED
+############################################################
+
+set.seed(20260827)
+
+
+############################################################
+# WEIGHT FUNCTIONS
+############################################################
+
+weight_uniform <- function(x) {
+  
+  rep(1, length(x))
+  
+}
+
+
+weight_central <- function(x) {
+  
+  1 - (2 * x - 1)^2
+  
+}
+
+
+weight_tail <- function(x) {
+  
+  (2 * x - 1)^2
+  
+}
+
+
+############################################################
+# PERTURBATION FUNCTIONS
+############################################################
+
+############################################################
+# h1(x) = 2x - 1
+############################################################
+
+h_linear <- function(x) {
+  
+  2 * x - 1
+  
+}
+
+
+############################################################
+# h2(x) = 6x^2 - 6x + 1
+############################################################
+
+h_quadratic <- function(x) {
+  
+  6 * x^2 - 6 * x + 1
+  
+}
+
+
+############################################################
+# h3(x) = sin(2 pi x)
+############################################################
+
+h_oscillatory <- function(x) {
+  
+  sin(2 * pi * x)
+  
+}
+
+
+############################################################
+# LOCALIZED PERTURBATION
+############################################################
+
+localized_raw <- function(
+    x,
+    x0,
+    eta
+) {
+  
+  exp(
+    -(
+      (x - x0)^2
+    ) /
+      (
+        2 * eta^2
+      )
+  )
+  
+}
+
+
+############################################################
+# CENTERED LOCALIZED PERTURBATION
+############################################################
+
+localized_centered <- function(
+    x,
+    x0,
+    eta
+) {
+  
+  centre <- integrate(
+    function(t) {
+      
+      exp(
+        -(
+          (t - x0)^2
+        ) /
+          (
+            2 * eta^2
+          )
+      )
+      
+    },
+    lower = 0,
+    upper = 1
+  )$value
+  
+  
+  localized_raw(
+    x = x,
+    x0 = x0,
+    eta = eta
+  ) - centre
+  
+}
+
+
+############################################################
+# PERTURBATION SETTINGS
+############################################################
+
+x0_values <- c(
+  0.25,
+  0.50,
+  0.75
+)
+
+eta_values <- c(
+  0.05,
+  0.10,
+  0.20
+)
+
+############################################################
+# SPACING STATISTIC
+############################################################
+
+spacing_statistic <- function(
+    x,
+    r,
+    weight_function
+) {
+  
+  x <- sort(x)
+  
+  n <- length(x)
+  
+  
+  ##########################################################
+  # VALIDITY CHECK
+  ##########################################################
+  
+  if (
+    r >= n
+  ) {
+    
+    return(
+      NA_real_
+    )
+  }
+  
+  
+  ##########################################################
+  # R-TH ORDER SPACINGS
+  ##########################################################
+  
+  D_r <-
+    x[
+      (r + 1):n
+    ] -
+    x[
+      1:(n - r)
+    ]
+  
+  
+  ##########################################################
+  # MIDPOINTS
+  ##########################################################
+  
+  midpoints <-
+    (
+      x[
+        (r + 1):n
+      ] +
+        x[
+          1:(n - r)
+        ]
+    ) / 2
+  
+  
+  ##########################################################
+  # WEIGHTS
+  ##########################################################
+  
+  weights <-
+    weight_function(
+      midpoints
+    )
+  
+  
+  ##########################################################
+  # CHECK WEIGHTS
+  ##########################################################
+  
+  if (
+    length(weights) !=
+    length(D_r)
+  ) {
+    
+    stop(
+      "Weight function returned incorrect length."
+    )
+  }
+  
+  
+  ##########################################################
+  # CENTER SPACINGS
+  ##########################################################
+  
+  Dbar_r <-
+    mean(D_r)
+  
+  
+  ##########################################################
+  # NUMERATOR
+  ##########################################################
+  
+  numerator <-
+    sum(
+      weights *
+        (
+          D_r -
+            Dbar_r
+        )^2
+    )
+  
+  
+  ##########################################################
+  # DENOMINATOR
+  ##########################################################
+  
+  denominator <-
+    sum(
+      (
+        D_r -
+          Dbar_r
+      )^2
+    )
+  
+  
+  ##########################################################
+  # CHECK DENOMINATOR
+  ##########################################################
+  
+  if (
+    !is.finite(denominator) ||
+    denominator <= 0
+  ) {
+    
+    return(
+      NA_real_
+    )
+  }
+  
+  
+  ##########################################################
+  # STATISTIC
+  ##########################################################
+  
+  statistic <-
+    numerator /
+    denominator
+  
+  
+  return(
+    statistic
+  )
+}
+
+
+############################################################
+# CRITICAL VALUES
+############################################################
+
+critical_values <- numeric()
+
+
+############################################################
+# CALCULATE NULL CRITICAL VALUES
+############################################################
+
+for (n in sample_sizes) {
+  
+  for (r in r_values) {
+    
+    if (r >= n) {
+      next
+    }
+    
+    
+    ########################################################
+    # UNIFORM
+    ########################################################
+    
+    null_uniform <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_uniform[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_uniform
+        )
+    }
+    
+    critical_values[
+      paste(
+        n,
+        r,
+        "Uniform",
+        sep = "_"
+      )
+    ] <-
+      quantile(
+        null_uniform,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # CENTRAL
+    ########################################################
+    
+    null_central <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_central[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_central
+        )
+    }
+    
+    critical_values[
+      paste(
+        n,
+        r,
+        "Central",
+        sep = "_"
+      )
+    ] <-
+      quantile(
+        null_central,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    ########################################################
+    # TAIL
+    ########################################################
+    
+    null_tail <- numeric(N)
+    
+    for (b in 1:N) {
+      
+      x <- runif(n)
+      
+      null_tail[b] <-
+        spacing_statistic(
+          x = x,
+          r = r,
+          weight_function = weight_tail
+        )
+    }
+    
+    critical_values[
+      paste(
+        n,
+        r,
+        "Tail",
+        sep = "_"
+      )
+    ] <-
+      quantile(
+        null_tail,
+        probs = 1 - alpha,
+        na.rm = TRUE
+      )
+    
+    
+    cat(
+      "Critical values completed:",
+      "n =", n,
+      "| r =", r,
+      "\n"
+    )
+  }
+}
+
+
+############################################################
+# GENERATE CONTIGUOUS SAMPLE
+############################################################
+
+generate_contiguous_sample <- function(
+    n,
+    c,
+    h_function
+) {
+  
+  
+  ##########################################################
+  # GRID FOR REJECTION SAMPLING
+  ##########################################################
+  
+  grid <- seq(
+    0,
+    1,
+    length.out = 10001
+  )
+  
+  
+  ##########################################################
+  # EVALUATE h
+  ##########################################################
+  
+  h_grid <- h_function(grid)
+  
+  
+  ##########################################################
+  # CONTIGUOUS DENSITY
+  ##########################################################
+  
+  density_grid <-
+    1 +
+    (
+      c /
+        sqrt(n)
+    ) *
+    h_grid
+  
+  
+  ##########################################################
+  # SAFETY CHECK
+  ##########################################################
+  
+  if (
+    min(density_grid) <= 0
+  ) {
+    
+    stop(
+      "Density is not non-negative. ",
+      "Reduce c or rescale h."
+    )
+  }
+  
+  
+  ##########################################################
+  # MAXIMUM DENSITY
+  ##########################################################
+  
+  density_max <-
+    max(density_grid)
+  
+  
+  ##########################################################
+  # REJECTION SAMPLING
+  ##########################################################
+  
+  x <- numeric(n)
+  
+  count <- 0
+  
+  while (
+    count < n
+  ) {
+    
+    candidate <-
+      runif(n - count)
+    
+    
+    h_candidate <-
+      h_function(candidate)
+    
+    
+    density_candidate <-
+      1 +
+      (
+        c /
+          sqrt(n)
+      ) *
+      h_candidate
+    
+    
+    accept_probability <-
+      density_candidate /
+      density_max
+    
+    
+    accepted <-
+      runif(
+        length(candidate)
+      ) <
+      accept_probability
+    
+    
+    if (
+      any(accepted)
+    ) {
+      
+      accepted_values <-
+        candidate[
+          accepted
+        ]
+      
+      
+      number_to_add <-
+        min(
+          length(accepted_values),
+          n - count
+        )
+      
+      
+      x[
+        (count + 1):
+          (count + number_to_add)
+      ] <-
+        accepted_values[
+          1:number_to_add
+        ]
+      
+      
+      count <-
+        count +
+        number_to_add
+    }
+  }
+  
+  
+  return(x)
+}
+
+
+############################################################
+# THEORETICAL LOCAL NONCENTRALITY
+############################################################
+
+# IMPORTANT:
+# Insert the theoretical expression for
+# kappa_{r,w}(h) obtained in the manuscript.
+#
+# The function below is deliberately isolated so that the
+# theoretical formula can be changed without modifying the
+# simulation code.
+
+kappa_local <- function(
+    r,
+    weight_name,
+    h_function
+) {
+  
+  
+  ##########################################################
+  # SELECT WEIGHT
+  ##########################################################
+  
+  if (
+    weight_name == "Uniform"
+  ) {
+    
+    weight_function <-
+      weight_uniform
+    
+  } else if (
+    weight_name == "Central"
+  ) {
+    
+    weight_function <-
+      weight_central
+    
+  } else {
+    
+    weight_function <-
+      weight_tail
+  }
+  
+  
+  ##########################################################
+  # NUMERICAL INTEGRATION GRID
+  ##########################################################
+  
+  grid <- seq(
+    0,
+    1,
+    length.out = 10001
+  )
+  
+  
+  h_values <-
+    h_function(grid)
+  
+  
+  w_values <-
+    weight_function(grid)
+  
+  
+  ##########################################################
+  # PLACEHOLDER FOR THEORETICAL KAPPA
+  ##########################################################
+  
+  #
+  # Replace the following expression by the exact
+  # theoretical formula derived in the manuscript.
+  #
+  
+  numerator <-
+    sum(
+      w_values *
+        h_values
+    ) /
+    length(grid)
+  
+  
+  denominator <-
+    sqrt(
+      sum(
+        w_values^2
+      ) /
+        length(grid)
+    )
+  
+  
+  if (
+    denominator == 0
+  ) {
+    
+    return(0)
+  }
+  
+  
+  numerator /
+    denominator
+}
+
+
+############################################################
+# THEORETICAL LOCAL POWER
+############################################################
+
+theoretical_local_power <- function(
+    lambda,
+    alpha = 0.05
+) {
+  
+  
+  critical <-
+    qnorm(
+      1 -
+        alpha / 2
+    )
+  
+  
+  pnorm(
+    -critical -
+      lambda
+  ) +
+    (
+      1 -
+        pnorm(
+          critical -
+            lambda
+        )
+    )
+}
+
+
+############################################################
+# INITIALIZE RESULTS
+############################################################
+
+results_sim9 <-
+  data.frame(
+    n = numeric(),
+    Perturbation = character(),
+    x0 = numeric(),
+    eta = numeric(),
+    c = numeric(),
+    r = numeric(),
+    Weight = character(),
+    Kappa = numeric(),
+    Lambda = numeric(),
+    Empirical_Power = numeric(),
+    MCSE = numeric(),
+    Theoretical_Power = numeric(),
+    stringsAsFactors = FALSE
+  )
+
+
+############################################################
+# MAIN SIMULATION
+############################################################
+
+for (
+  n in sample_sizes
+) {
+  
+  
+  for (
+    perturbation_name in
+    c(
+      "Linear",
+      "Quadratic",
+      "Oscillatory",
+      "Localized"
+    )
+  ) {
+    
+    
+    ########################################################
+    # PERTURBATION CONFIGURATION
+    ########################################################
+    
+    if (
+      perturbation_name == "Linear"
+    ) {
+      
+      h_function <-
+        h_linear
+      
+      x0_loop <-
+        NA
+      
+      eta_loop <-
+        NA
+      
+    } else if (
+      perturbation_name == "Quadratic"
+    ) {
+      
+      h_function <-
+        h_quadratic
+      
+      x0_loop <-
+        NA
+      
+      eta_loop <-
+        NA
+      
+    } else if (
+      perturbation_name == "Oscillatory"
+    ) {
+      
+      h_function <-
+        h_oscillatory
+      
+      x0_loop <-
+        NA
+      
+      eta_loop <-
+        NA
+      
+    }
+    
+    
+    ########################################################
+    # NON-LOCALIZED ALTERNATIVES
+    ########################################################
+    
+    if (
+      perturbation_name != "Localized"
+    ) {
+      
+      for (
+        c_value in c_values
+      ) {
+        
+        for (
+          r in r_values
+        ) {
+          
+          if (
+            r >= n
+          ) {
+            next
+          }
+          
+          
+          for (
+            weight_name in
+            c(
+              "Uniform",
+              "Central",
+              "Tail"
+            )
+          ) {
+            
+            
+            ##################################################
+            # SELECT WEIGHT FUNCTION
+            ##################################################
+            
+            if (
+              weight_name == "Uniform"
+            ) {
+              
+              weight_function <-
+                weight_uniform
+              
+            } else if (
+              weight_name == "Central"
+            ) {
+              
+              weight_function <-
+                weight_central
+              
+            } else {
+              
+              weight_function <-
+                weight_tail
+            }
+            
+            
+            ##################################################
+            # CRITICAL VALUE
+            ##################################################
+            
+            critical_key <-
+              paste(
+                n,
+                r,
+                weight_name,
+                sep = "_"
+              )
+            
+            
+            crit <-
+              critical_values[
+                critical_key
+              ]
+            
+            
+            ##################################################
+            # KAPPA
+            ##################################################
+            
+            kappa <-
+              kappa_local(
+                r = r,
+                weight_name =
+                  weight_name,
+                h_function =
+                  h_function
+              )
+            
+            
+            ##################################################
+            # LAMBDA
+            ##################################################
+            
+            lambda <-
+              c_value *
+              kappa
+            
+            
+            ##################################################
+            # MONTE CARLO REPLICATIONS
+            ##################################################
+            
+            rejection <-
+              logical(N)
+            
+            
+            for (
+              b in 1:N
+            ) {
+              
+              
+              x <-
+                generate_contiguous_sample(
+                  n =
+                    n,
+                  c =
+                    c_value,
+                  h_function =
+                    h_function
+                )
+              
+              
+              statistic <-
+                spacing_statistic(
+                  x =
+                    x,
+                  r =
+                    r,
+                  weight_function =
+                    weight_function
+                )
+              
+              
+              rejection[b] <-
+                statistic >
+                crit
+            }
+            
+            
+            ##################################################
+            # EMPIRICAL POWER
+            ##################################################
+            
+            empirical_power <-
+              mean(
+                rejection
+              )
+            
+            
+            ##################################################
+            # MCSE
+            ##################################################
+            
+            mcse <-
+              sqrt(
+                empirical_power *
+                  (
+                    1 -
+                      empirical_power
+                  ) /
+                  N
+              )
+            
+            
+            ##################################################
+            # THEORETICAL POWER
+            ##################################################
+            
+            theoretical_power <-
+              theoretical_local_power(
+                lambda =
+                  lambda,
+                alpha =
+                  alpha
+              )
+            
+            
+            ##################################################
+            # STORE
+            ##################################################
+            
+            results_sim9 <-
+              rbind(
+                results_sim9,
+                data.frame(
+                  n =
+                    n,
+                  Perturbation =
+                    perturbation_name,
+                  x0 =
+                    x0_loop,
+                  eta =
+                    eta_loop,
+                  c =
+                    c_value,
+                  r =
+                    r,
+                  Weight =
+                    weight_name,
+                  Kappa =
+                    kappa,
+                  Lambda =
+                    lambda,
+                  Empirical_Power =
+                    empirical_power,
+                  MCSE =
+                    mcse,
+                  Theoretical_Power =
+                    theoretical_power,
+                  stringsAsFactors =
+                    FALSE
+                )
+              )
+            
+            
+            ##################################################
+            # PROGRESS
+            ##################################################
+            
+            cat(
+              "Completed:",
+              "n =", n,
+              "| Perturbation =",
+              perturbation_name,
+              "| c =", c_value,
+              "| r =", r,
+              "| Weight =",
+              weight_name,
+              "\n"
+            )
+          }
+        }
+      }
+    }
+    
+    
+    ########################################################
+    # LOCALIZED ALTERNATIVES
+    ########################################################
+    
+    if (
+      perturbation_name ==
+      "Localized"
+    ) {
+      
+      for (
+        x0 in x0_values
+      ) {
+        
+        for (
+          eta in eta_values
+        ) {
+          
+          h_function <-
+            function(x) {
+              
+              localized_centered(
+                x =
+                  x,
+                x0 =
+                  x0,
+                eta =
+                  eta
+              )
+              
+            }
+          
+          
+          for (
+            c_value in c_values
+          ) {
+            
+            for (
+              r in r_values
+            ) {
+              
+              if (
+                r >= n
+              ) {
+                next
+              }
+              
+              
+              for (
+                weight_name in
+                c(
+                  "Uniform",
+                  "Central",
+                  "Tail"
+                )
+              ) {
+                
+                
+                ################################################
+                # SELECT WEIGHT
+                ################################################
+                
+                if (
+                  weight_name ==
+                  "Uniform"
+                ) {
+                  
+                  weight_function <-
+                    weight_uniform
+                  
+                } else if (
+                  weight_name ==
+                  "Central"
+                ) {
+                  
+                  weight_function <-
+                    weight_central
+                  
+                } else {
+                  
+                  weight_function <-
+                    weight_tail
+                }
+                
+                
+                ################################################
+                # CRITICAL VALUE
+                ################################################
+                
+                critical_key <-
+                  paste(
+                    n,
+                    r,
+                    weight_name,
+                    sep = "_"
+                  )
+                
+                
+                crit <-
+                  critical_values[
+                    critical_key
+                  ]
+                
+                
+                ################################################
+                # KAPPA
+                ################################################
+                
+                kappa <-
+                  kappa_local(
+                    r =
+                      r,
+                    weight_name =
+                      weight_name,
+                    h_function =
+                      h_function
+                  )
+                
+                
+                ################################################
+                # LAMBDA
+                ################################################
+                
+                lambda <-
+                  c_value *
+                  kappa
+                
+                
+                ################################################
+                # MONTE CARLO
+                ################################################
+                
+                rejection <-
+                  logical(N)
+                
+                
+                for (
+                  b in 1:N
+                ) {
+                  
+                  x <-
+                    generate_contiguous_sample(
+                      n =
+                        n,
+                      c =
+                        c_value,
+                      h_function =
+                        h_function
+                    )
+                  
+                  
+                  statistic <-
+                    spacing_statistic(
+                      x =
+                        x,
+                      r =
+                        r,
+                      weight_function =
+                        weight_function
+                    )
+                  
+                  
+                  rejection[b] <-
+                    statistic >
+                    crit
+                }
+                
+                
+                ################################################
+                # EMPIRICAL POWER
+                ################################################
+                
+                empirical_power <-
+                  mean(
+                    rejection
+                  )
+                
+                
+                ################################################
+                # MCSE
+                ################################################
+                
+                mcse <-
+                  sqrt(
+                    empirical_power *
+                      (
+                        1 -
+                          empirical_power
+                      ) /
+                      N
+                  )
+                
+                
+                ################################################
+                # THEORETICAL POWER
+                ################################################
+                
+                theoretical_power <-
+                  theoretical_local_power(
+                    lambda =
+                      lambda,
+                    alpha =
+                      alpha
+                  )
+                
+                
+                ################################################
+                # STORE
+                ################################################
+                
+                results_sim9 <-
+                  rbind(
+                    results_sim9,
+                    data.frame(
+                      n =
+                        n,
+                      Perturbation =
+                        perturbation_name,
+                      x0 =
+                        x0,
+                      eta =
+                        eta,
+                      c =
+                        c_value,
+                      r =
+                        r,
+                      Weight =
+                        weight_name,
+                      Kappa =
+                        kappa,
+                      Lambda =
+                        lambda,
+                      Empirical_Power =
+                        empirical_power,
+                      MCSE =
+                        mcse,
+                      Theoretical_Power =
+                        theoretical_power,
+                      stringsAsFactors =
+                        FALSE
+                    )
+                  )
+                
+                
+                ################################################
+                # PROGRESS
+                ################################################
+                
+                cat(
+                  "Completed:",
+                  "n =", n,
+                  "| Perturbation =",
+                  perturbation_name,
+                  "| x0 =", x0,
+                  "| eta =", eta,
+                  "| c =", c_value,
+                  "| r =", r,
+                  "| Weight =",
+                  weight_name,
+                  "\n"
+                )
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
+
+
+############################################################
+# IDENTIFY ZERO-KAPPA CASES
+############################################################
+
+results_sim9$Zero_Kappa <-
+  abs(
+    results_sim9$Kappa
+  ) < 1e-8
+
+
+############################################################
+# VIEW RESULTS
+############################################################
+
+print(
+  results_sim9
+)
+
+
+############################################################
+# SAVE RESULTS
+############################################################
+
+write.csv(
+  results_sim9,
+  "Simulation_IX_Contiguous_Alternatives.csv",
+  row.names = FALSE
+)
